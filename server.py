@@ -91,8 +91,8 @@ def generate_text(prompt):
         num_return_sequences=1,
         no_repeat_ngram_size=2,
         temperature=0.9,  # Меньше температура для более стабильных ответов
-        top_k=40,  # Меньше значение для более разнообразных результатов
-        top_p=0.85,
+        top_k=30,  # Меньше значение для более разнообразных результатов
+        top_p=0.9,
         max_new_tokens=50,
         repetition_penalty=1.3,
         pad_token_id=tokenizer.eos_token_id,
