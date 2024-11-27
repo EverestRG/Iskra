@@ -1,7 +1,7 @@
 import os
 from flask import Flask, request, jsonify
 from transformers import GPT2LMHeadModel, GPT2Tokenizer, AutoModelForCausalLM, AutoTokenizer
-import torch
+import torch, re
 
 print("Loading model...")
 
@@ -10,12 +10,13 @@ app = Flask(__name__)
 # Путь к моделям
 gpt2_model_path = "./models/gpt2"
 dialo_model_path = "./models/dialo"
+dialol_model_path = "./models/dialolarge"
 savepth = "./save.txt"
 dialog_history = []
 
 try:
     with open(savepth, 'r') as save:
-        dialog_history = save.read().split('#$%')
+        #dialog_history = save.read().split('#$%')
         print('Readed dialog history')
 except:
     with open(savepth, 'w+') as save:
@@ -26,7 +27,7 @@ try:
 except: None
 
 # Выбор модели: gpt2 или dialo
-model_choice = "gpt2"  # Можно менять на "gpt2" или "dialo"
+model_choice = "dialolarge"  # Можно менять на "gpt2" или "dialo"
 
 # Проверяем, есть ли папка с моделью
 def load_model(model_choice):
@@ -36,6 +37,10 @@ def load_model(model_choice):
         tokenizer_class = GPT2Tokenizer
     elif model_choice == "dialo":
         model_path = dialo_model_path
+        model_class = AutoModelForCausalLM
+        tokenizer_class = AutoTokenizer
+    elif model_choice == "dialolarge":
+        model_path = dialol_model_path
         model_class = AutoModelForCausalLM
         tokenizer_class = AutoTokenizer
     else:
@@ -48,6 +53,8 @@ def load_model(model_choice):
             model_name = "microsoft/DialoGPT-medium"  # Можно использовать 'microsoft/DialoGPT-large' или 'microsoft/DialoGPT-small'
         elif model_choice == "gpt2":
             model_name = "gpt2-medium"
+        elif model_choice == "dialolarge":
+            model_name = "microsoft/DialoGPT-large"
         model = model_class.from_pretrained(model_name)
         tokenizer = tokenizer_class.from_pretrained(model_name)
         # Сохраняем модель в папку
@@ -70,47 +77,58 @@ print("Model loaded!")
 
 # Функция для генерации текста
 def generate_text(prompt):
-    final_prompt = f"You are a helpful and kind daughter, named Iskra. "
     # Добавляем последний запрос в историю
     # Ограничиваем историю последними 5 сообщениями
-    dialog_history.append('Father: ' + prompt)
-    print(f"prompt: {prompt}")
-    if len(dialog_history) > 2:
-        dialog_history.pop(0)
 
     # Ограничиваем количество токенов в контексте, чтобы избежать переполнения
-    max_length = 200  # Максимальное количество токенов для GPT-2/ DialoGPT
-    inputs = tokenizer.encode(final_prompt + " ".join(dialog_history), return_tensors="pt", truncation=True, max_length=max_length)
+    max_length = 1024  # Максимальное количество токенов для GPT-2/ DialoGPT
+    inputs = tokenizer.encode(
+        '<history>' + "Hi! I'm your father and you are my kind and clever daughter. Your name is Iskra. " +
+        "You always remember your name and respond to prompts based on your knowledge and the conversation history. " +
+        tokenizer.eos_token.join(dialog_history) +
+        tokenizer.eos_token +
+        '<prompt>' + prompt +
+        tokenizer.eos_token,
+        return_tensors="pt", truncation=True, max_length=max_length
+    )
+    print(f"prompt: {tokenizer.decode(inputs[0], skip_special_tokens=False)}")
     #inputs = tokenizer.encode(prompt, return_tensors="pt", truncation=True, max_length=max_length)
+
+    dialog_history.append(prompt)
+    if len(dialog_history) > 2:
+        dialog_history.pop(0)
 
     attention_mask = torch.ones(inputs.shape, device=inputs.device)
 
     outputs = model.generate(
         inputs,
-        max_length=200,
+        max_length=300,  # Общая длина (включая входной контекст)
         num_return_sequences=1,
         no_repeat_ngram_size=2,
-        temperature=0.9,  # Меньше температура для более стабильных ответов
-        top_k=30,  # Меньше значение для более разнообразных результатов
-        top_p=0.9,
-        max_new_tokens=50,
-        repetition_penalty=1.3,
+        temperature=0.5,  # Более стабильные ответы
+        top_k=75,  # Умеренное разнообразие
+        top_p=0.75,  # Сбалансированный уровень вероятности
+        max_new_tokens=25,  # Ограничиваем длину ответа
+        repetition_penalty=1.3,  # Уменьшает бред
         pad_token_id=tokenizer.eos_token_id,
         eos_token_id=tokenizer.eos_token_id,
         attention_mask=attention_mask,
-        do_sample=False
+        do_sample=True  # Включаем сэмплирование для разнообразия
     )
 
     text = tokenizer.decode(outputs[0], skip_special_tokens=True)
 
     # Обрезаем повторение запроса в ответе (убираем вопрос из начала ответа)
-    text = text.replace(' '.join(dialog_history), '').replace(final_prompt, '')
+    text = text.replace(tokenizer.decode(inputs[0], skip_special_tokens=True), '')
 
-    if len(text.split()) > 14:  # Ограничение до 14 слов
-        text = " ".join(text.split()[:14]) + "..."
+    text = text.replace('\n', ' ').replace('...', '.').strip()
+    text = re.sub(r'[^\w\s.,!?]', '', text)
+
+    if '<|endoftext|>' in text:
+        text = text.split('<|endoftext|>')[0]
 
     # Добавляем сгенерированный ответ в историю для дальнейшего контекста
-    dialog_history.append('Daughter Iskra: ' + text)
+    dialog_history[-1] = dialog_history[-1] + ' -> ' + text
     print(f"Generated text: {text}")
     return text
 
