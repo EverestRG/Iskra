@@ -1,6 +1,7 @@
 import os
 from flask import Flask, request, jsonify
 from transformers import GPT2LMHeadModel, GPT2Tokenizer, AutoModelForCausalLM, AutoTokenizer
+from emotion_index import calculate_happiness_index
 import torch, re, random
 
 print("Loading model...")
@@ -73,6 +74,12 @@ def clean_generated_text(text):
     # Исключения для коротких слов
     short_word_exceptions = {"i", "im", "ur", "am", "on", "of", "an", "a", "it", "is", "in", "at", "to", "by", "as", "he", "we", "do", "be", "go", "me", "my", "no", "or", "up", "us"}
 
+    text = text.replace(' DDD', '')
+    text = text.replace('DDD', '')
+    text = text.replace('And thanks again.', '')
+    text = text.replace('Thanks again.', '')
+    text = text.replace('Thanks again', '')
+
     # Убираем случайные символы
     text = re.sub(r'[^\w\s.,!?]', '', text)
 
@@ -85,53 +92,26 @@ def clean_generated_text(text):
     # Собираем текст обратно
     text = ' '.join(filtered_words)
 
+    filtered_words = [
+        word for word in text.split()
+        if len(word.replace('.', '').replace('!', '').replace('?', '')) > 2 or word.lower() in short_word_exceptions
+    ]
+
+    # Собираем текст обратно
+    text = ' '.join(filtered_words)
+
     # Убираем лишние пробелы
     text = re.sub(r'\s+', ' ', text).strip()
 
     return text
 
-
-# Функция для определения эмоций на основе текста
-previous_emotion = "neutral"
-
-
-def detect_emotion(prompt, previous_emotion="neutral"):
-    """
-    Определяет эмоцию, учитывая как текущий запрос, так и предыдущее состояние.
-    Если эмоция явно изменяется, она обновляется.
-    """
-    # Словарь ключевых слов для эмоций
-    sad_keywords = ["sad", "down", "unhappy", "blue", "gloomy", "depressed"]
-    happy_keywords = ["happy", "joy", "great", "good", "excited", "fun", "smile", "bright"]
-    neutral_keywords = ["okay", "fine", "normal", "alright"]
-
-    # Если в запросе есть ключевые слова, указывающие на грусть или радость, обновляем состояние
-    if any(word in prompt.lower() for word in sad_keywords):
-        return "sad"
-    elif any(word in prompt.lower() for word in happy_keywords):
-        # Если запрос содержит слова о счастье, но текущая эмоция грустная, не меняем её
-        if previous_emotion == "sad":
-            return previous_emotion
-        return "happy"
-    elif any(word in prompt.lower() for word in neutral_keywords):
-        return "neutral"
-
-    # Если ключевые слова противоречат предыдущему состоянию, сохраняем текущее состояние
-    return previous_emotion
-
-
 # Функция для добавления эмоции в ответ
-def add_emotion(text, emotion="happy"):
-    emotions = {
-        "happy": ["😊", "😄"],
-        "excited": ["😄"],
-        "curious": ["🤔"],
-        "thoughtful": ["🤔"],
-        "neutral": [""],
-        "sad": ["😢"]
-    }
-    if emotion in emotions:
-        return text + " " + random.choice(emotions[emotion])
+def add_emotion(text, emotion=0.0):
+    print(emotion)
+    if emotion > 0.99979:
+        return text + ' ' + random.choice(["😃", "😄", "😊"])
+    if emotion < -0.99979:
+        return text + ' ' + random.choice(["🙁", "😥", "😖"])
     return text
 
 
@@ -145,10 +125,7 @@ def trim_to_sentence(text):
 
 # Функция для генерации текста
 def generate_text(prompt):
-    global previous_emotion, dialog_history_tokens, dialog_history
-
-    # Определяем текущую эмоцию
-    current_emotion = detect_emotion(prompt, previous_emotion)
+    global dialog_history_tokens, dialog_history
 
     # Формируем статический контекст (монолог от лица System)
     static_instructions = (
@@ -194,11 +171,11 @@ def generate_text(prompt):
         max_length=300,
         num_return_sequences=1,
         no_repeat_ngram_size=2,
-        temperature=0.11,
-        top_k=29,
-        top_p=0.7,
+        temperature=0.35,
+        top_k=48,
+        top_p=0.8,
         max_new_tokens=25,
-        repetition_penalty=1.6,
+        repetition_penalty=2.0,
         pad_token_id=tokenizer.eos_token_id,
         eos_token_id=tokenizer.eos_token_id,
         attention_mask=attention_mask,
@@ -220,10 +197,7 @@ def generate_text(prompt):
     dialog_history_tokens.append(response_tokens)
 
     # Добавляем эмоцию
-    text = add_emotion(text, current_emotion)
-
-    # Сохраняем текущую эмоцию
-    previous_emotion = current_emotion
+    text = add_emotion(text, calculate_happiness_index(text))
 
     print(f"Generated text: {text}")
 
