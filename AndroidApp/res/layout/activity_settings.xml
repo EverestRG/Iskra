@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:gravity="center">
+
+    <TextView
+        android:id="@+id/textView"
+        android:layout_width="232dp"
+        android:layout_height="61dp"
+        android:allowUndo="false"
+        android:autoText="false"
+        android:clickable="false"
+        android:contextClickable="false"
+        android:cursorVisible="false"
+        android:editable="false"
+        android:fontFamily="sans-serif"
+        android:text="Settings"
+        android:textAlignment="center"
+        android:textAppearance="@style/TextAppearance.AppCompat.Large"
+        android:textSize="34sp"
+        android:typeface="sans" />
+
+    <EditText
+        android:id="@+id/ipEditText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Server IP Address"
+        android:inputType="text"
+        android:padding="16dp"
+        android:textSize="18sp" />
+
+    <Switch
+        android:id="@+id/themeSwitch"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Dark Theme"
+        android:padding="16dp"
+        android:textSize="18sp"/>
+
+    <Button
+        android:id="@+id/saveButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Save Settings"
+        android:padding="16dp"
+        android:textSize="18sp" />
+
+</LinearLayout>
