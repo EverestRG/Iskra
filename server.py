@@ -205,6 +205,8 @@ def generate_text(prompt):
 
     return text
 
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 60
+
 @app.route('/get_response', methods=['POST'])
 def get_response():
     data = request.get_json()
