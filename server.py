@@ -2,7 +2,7 @@ import os
 from flask import Flask, request, jsonify
 from transformers import GPT2LMHeadModel, GPT2Tokenizer, AutoModelForCausalLM, AutoTokenizer
 from emotion_index import calculate_happiness_index
-import torch, re, random
+import torch, re, random, json
 
 print("Loading model...")
 
@@ -12,12 +12,48 @@ app = Flask(__name__)
 gpt2_model_path = "./models/gpt2"
 dialo_model_path = "./models/dialo"
 dialol_model_path = "./models/dialolarge"
-savepth = "./save.txt"
-dialog_history = []
-dialog_history_tokens = []
 
 # Выбор модели: gpt2 или dialo
 model_choice = "dialolarge"  # Можно менять на "gpt2" или "dialo"
+
+# Функции для сохранения и загрузки истории
+def load_user_history(user_id):
+    # Загрузка истории сообщений
+    history_file = os.path.join('history', f'{user_id}.txt')
+    token_history_file = os.path.join('token_history', f'{user_id}.txt')
+
+    if os.path.exists(history_file):
+        with open(history_file, 'r', encoding='utf-8') as f:
+            user_history = f.read().split('%NEXT%')
+    else:
+        user_history = []
+
+    user_token_history = []
+
+    if os.path.exists(token_history_file):
+        with open(token_history_file, 'r', encoding='utf-8') as f:
+            readed = f.readlines()
+            for i in range(len(readed)):
+                user_token_history.append(tokenizer.encode(readed[i], return_tensors="pt", truncation=True, max_length=1024))
+
+    return user_history, user_token_history
+
+def save_user_history(user_id, user_history, user_token_history):
+    # Сохранение истории сообщений
+    os.makedirs('history', exist_ok=True)
+    os.makedirs('token_history', exist_ok=True)
+
+    history_file = os.path.join('history', f'{user_id}.txt')
+    token_history_file = os.path.join('token_history', f'{user_id}.txt')
+
+    with open(history_file, 'w', encoding='utf-8') as f:
+        f.write('%NEXT%'.join(user_history))
+
+    with open(token_history_file, 'w', encoding='utf-8') as f:
+        story = []
+        for i in range(len(user_token_history)):
+            story.append(tokenizer.decode(user_token_history[i][0], skip_special_tokens=True))
+        f.write('\n'.join(story))
 
 # Проверяем, есть ли папка с моделью
 def load_model(model_choice):
@@ -124,46 +160,45 @@ def trim_to_sentence(text):
 
 
 # Функция для генерации текста
-def generate_text(prompt):
-    global dialog_history_tokens, dialog_history
+def generate_text(prompt, user_history, user_token_history):
+    global model, tokenizer
 
-    # Формируем статический контекст (монолог от лица System)
-    static_instructions = (
-        f"<|user|> Your task is to respond to my queries clearly with kindness.\n<|iskra|> Understood.{tokenizer.eos_token}"
-        #f"\nCurrently, you feel {current_emotion}."
-    )
+    # Проверка на команду сброса истории
+    if prompt == "%%<|RESET|>%%":
+        user_history.clear()  # Очищаем историю сообщений
+        user_token_history.clear()  # Очищаем историю токенов
+        return "%|DONE|%", user_history, user_token_history  # Отправляем подтверждение сброса
 
-    # Формируем динамическую часть истории (история диалога)
+    # Формируем статический контекст
+    static_instructions = f"<|user|> Your task is to respond to my queries clearly with kindness.\n<|iskra|> Understood.{tokenizer.eos_token}"
+
+    # Формируем динамическую часть истории
     conversation_history = ""
-    for i in range(0, len(dialog_history_tokens), 2):  # Чередуем запросы и ответы
-        user_input = tokenizer.decode(dialog_history_tokens[i][0], skip_special_tokens=True)
-        bot_response = tokenizer.decode(dialog_history_tokens[i + 1][0], skip_special_tokens=True) if i + 1 < len(dialog_history_tokens) else ""
+    for i in range(0, len(user_token_history), 2):
+        user_input = tokenizer.decode(user_token_history[i][0], skip_special_tokens=True)
+        bot_response = tokenizer.decode(user_token_history[i + 1][0], skip_special_tokens=True) if i + 1 < len(user_token_history) else ""
         conversation_history += f"\n<|user|> {user_input}\n<|iskra|> {bot_response}{tokenizer.eos_token}"
 
-    # Добавляем текущий запрос
     conversation_history += f"\n<|user|> {prompt}"
-
-    # Объединяем контекст
-    #context = "".join([static_instructions, conversation_history])
 
     context = conversation_history
 
-    print(context)
+    #context = f"\n<|user|> {prompt}"
 
     # Токенизация контекста
     inputs = tokenizer.encode(context + tokenizer.eos_token, return_tensors="pt", truncation=True, max_length=1024)
-    #inputs = tokenizer.encode(prompt + tokenizer.eos_token, return_tensors="pt", truncation=True, max_length=1024)
 
     # Добавляем текущий запрос в историю
-    dialog_history_tokens.append(tokenizer.encode(f"{prompt}", return_tensors="pt"))
+    user_token_history.append(tokenizer.encode(f"{prompt}", return_tensors="pt"))
 
     # Ограничиваем длину истории
-    if len(dialog_history_tokens) > 2:  # 3 пары (вопрос-ответ)
-        dialog_history_tokens.pop(0)
-        dialog_history_tokens.pop(0)
+    if len(user_token_history) > 2:  # 1 пара (вопрос-ответ)
+        user_token_history.pop(0)
+        user_token_history.pop(0)
 
-    # Маска внимания
     attention_mask = torch.ones(inputs.shape, device=inputs.device)
+
+    print(context)
 
     # Генерация текста
     outputs = model.generate(
@@ -171,11 +206,11 @@ def generate_text(prompt):
         max_length=300,
         num_return_sequences=1,
         no_repeat_ngram_size=2,
-        temperature=0.35,
-        top_k=48,
-        top_p=0.8,
+        temperature=0.25,
+        top_k=40,
+        top_p=0.85,
         max_new_tokens=25,
-        repetition_penalty=2.0,
+        repetition_penalty=1.4,
         pad_token_id=tokenizer.eos_token_id,
         eos_token_id=tokenizer.eos_token_id,
         attention_mask=attention_mask,
@@ -185,8 +220,7 @@ def generate_text(prompt):
     # Декодируем текст
     text = tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-    # Убираем повторение запроса из ответа
-    text = text.replace(tokenizer.decode(inputs[0], skip_special_tokens=True), '')
+    text = text.replace(context.replace(tokenizer.eos_token, ''), '')
 
     # Чистим текст
     text = clean_generated_text(text)
@@ -194,16 +228,18 @@ def generate_text(prompt):
 
     # Добавляем ответ в историю
     response_tokens = tokenizer.encode(f"{text}", return_tensors="pt")
-    dialog_history_tokens.append(response_tokens)
+    user_token_history.append(response_tokens)
 
     # Добавляем эмоцию
-    text = add_emotion(text, calculate_happiness_index(text))
+    if random.choice([0, 1, 1, 1]):
+        text = add_emotion(text, calculate_happiness_index(text))
 
-    print(f"Generated text: {text}")
+    # Добавляем в историю диалога
+    user_history.append(f"[You]: {prompt}\n\n[Iskra]: {text}")
 
-    dialog_history.append(f"{prompt} -> {text}")
+    text = '\n\n'.join(user_history)
 
-    return text
+    return text, user_history, user_token_history
 
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 60
 
@@ -211,16 +247,35 @@ app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 60
 def get_response():
     data = request.get_json()
     prompt = data.get('prompt', '')
-    # Генерация ответа
-    if prompt:
-        response_text = generate_text(prompt)
-        return jsonify({"response": response_text})
-    else:
-        return jsonify({"response": "No prompt provided"}), 400
+    user_id = data.get('user_id')  # Получаем уникальный ID пользователя
+
+    if not user_id:
+        return jsonify({"response": "User ID is required"}), 400
+
+    # Загружаем историю пользователя
+    user_history, user_token_history = load_user_history(user_id)
+
+    # Генерация ответа с использованием истории этого пользователя
+    response_text, user_history, user_token_history = generate_text(prompt, user_history, user_token_history)
+
+    # Сохраняем обновленную историю пользователя
+    save_user_history(user_id, user_history, user_token_history)
+
+    return jsonify({"response": response_text}), 400
+
+@app.route('/get_history', methods=['POST'])
+def get_history():
+    data = request.get_json()
+    user_id = data.get('user_id')  # Получаем уникальный ID пользователя
+
+    if not user_id:
+        return jsonify({"response": "User ID is required"}), 400
+
+    # Загружаем историю пользователя
+    user_history, user_token_history = load_user_history(user_id)
+
+    return jsonify({"response": "\n\n".join(user_history)}), 400
 
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
-    print('Saving dialog context')
-    with open(savepth, 'w+', encoding="utf-8") as save:
-        save.write('\n'.join(dialog_history))

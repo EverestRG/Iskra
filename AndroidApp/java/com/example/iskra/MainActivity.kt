@@ -21,6 +21,9 @@ import java.util.concurrent.TimeUnit
 import androidx.activity.result.contract.ActivityResultContracts
 import android.widget.Toast
 import androidx.core.text.HtmlCompat
+import java.util.UUID
+import android.content.Context
+import android.view.inputmethod.InputMethodManager
 
 class MainActivity : AppCompatActivity() {
 
@@ -37,6 +40,12 @@ class MainActivity : AppCompatActivity() {
         sharedPreferences = getSharedPreferences("Settings", MODE_PRIVATE)
         val isDarkTheme = sharedPreferences.getBoolean("darkTheme", false)
         setTheme(if (isDarkTheme) R.style.Theme_Dark else R.style.Theme_Light)
+        val uid = sharedPreferences.getString("userID", "") ?: ""
+        if (uid == "") {
+            val editorr = sharedPreferences.edit()
+            editorr.putString("userID", UUID.randomUUID().toString())
+            editorr.apply()
+        }
 
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -47,6 +56,11 @@ class MainActivity : AppCompatActivity() {
         inputText = findViewById(R.id.inputText)
         sendRequestButton = findViewById(R.id.sendRequestButton)
         responseText = findViewById(R.id.responseText)
+        var settingsButton: Button = findViewById(R.id.settingsButton)
+
+        inputText.setText(sharedPreferences.getString("inpTxt", "") ?: "")
+
+        requestHistory()
 
         // Получаем сохранённый IP-адрес из SharedPreferences
         serverIp = sharedPreferences.getString("serverIp", "https://eb93-77-222-113-143.ngrok-free.app") ?: "https://eb93-77-222-113-143.ngrok-free.app"
@@ -59,15 +73,21 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        val settingsButton: Button = findViewById(R.id.settingsButton)
-
         settingsButton.setOnClickListener {
             val intent = Intent(this, SettingsActivity::class.java)
             settingsLauncher.launch(intent)
+            val editor = sharedPreferences.edit()
+            editor.putString("existingText", responseText.text.toString())
+            editor.putString("inpTxt", inputText.text.toString())
+            editor.apply()
         }
 
         // Кнопка для отправки запроса
         sendRequestButton.setOnClickListener {
+            if (currentFocus != null) {
+                val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                imm.hideSoftInputFromWindow(currentFocus!!.windowToken, 0)
+            }
             val prompt = inputText.text.toString()
             if (prompt.isNotBlank()) {
                 sendRequest(prompt)
@@ -79,20 +99,65 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Проверка и запрос разрешений
-        checkPermissions()
+        //checkPermissions()
     }
 
-    fun replaceHtmlString(input: String, oldText: String, newText: String): String {
-        // Преобразуем HTML в Spannable
-        var spannableText = HtmlCompat.fromHtml(input, HtmlCompat.FROM_HTML_MODE_LEGACY)
+    private fun requestHistory() {
+        val json = JSONObject()
+        json.put("user_id", sharedPreferences.getString("userID", "") ?: "")
+        serverIp = sharedPreferences.getString("serverIp", "https://eb93-77-222-113-143.ngrok-free.app") ?: "https://eb93-77-222-113-143.ngrok-free.app"
+        val client = OkHttpClient.Builder()
+            .connectTimeout(10, TimeUnit.SECONDS)  // Тайм-аут соединения
+            .writeTimeout(60, TimeUnit.SECONDS)    // Тайм-аут записи
+            .readTimeout(60, TimeUnit.SECONDS)     // Тайм-аут чтения
+            .build()
+        val body = RequestBody.create("application/json; charset=utf-8".toMediaType(), json.toString())
+        val request = Request.Builder()
+            .url(serverIp + "/get_history")
+            .post(body)
+            .build()
+        var currentToast: Toast? = null
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                currentToast?.cancel()
+                currentToast = Toast.makeText(applicationContext, "Failed requesting dialog history from server!", Toast.LENGTH_SHORT)
+                currentToast?.show()
+                runOnUiThread {
+                    var txts = sharedPreferences.getString("existingText", "")?: ""
+                    txts = txts.replace("[You]", "<font color='#27AE60'>[You]</font>")
+                    txts = txts.replace("[Iskra]", "<font color='#27AE60'>[Iskra]</font>")
+                    txts = txts.replace("\n", "<br>")
+                    responseText.text = HtmlCompat.fromHtml(txts, HtmlCompat.FROM_HTML_MODE_LEGACY)
+                }
+            }
 
-        // Преобразуем Spannable обратно в строку, заменяя старое на новое
-        val result = spannableText.toString().replace(oldText, newText)
-
-        //spannableText = HtmlCompat.fromHtml(result, HtmlCompat.FROM_HTML_MODE_LEGACY)
-
-        // Возвращаем результат в виде HTML с сохранением тегов
-        return spannableText.toString()//HtmlCompat.toHtml(spannableText, HtmlCompat.TO_HTML_PARAGRAPH_LINES_CONSECUTIVE)
+            override fun onResponse(call: Call, response: Response) {
+                val responseString = response.body?.string()
+                runOnUiThread {
+                    try {
+                        //Парсим JSON
+                        val jsonResponse = JSONObject(responseString ?: "No response from server.")
+                        var responseTextValue = jsonResponse.getString("response")
+                        responseTextValue = responseTextValue.replace("[You]", "<font color='#27AE60'>[You]</font>")
+                        responseTextValue = responseTextValue.replace("[Iskra]", "<font color='#27AE60'>[Iskra]</font>")
+                        responseTextValue = responseTextValue.replace("\n", "<br>")
+                        responseText.text = HtmlCompat.fromHtml(responseTextValue, HtmlCompat.FROM_HTML_MODE_LEGACY)
+                    } catch (e: Exception) {
+                        currentToast?.cancel()
+                        currentToast = Toast.makeText(applicationContext, "Failed parsing dialog history from server!", Toast.LENGTH_SHORT)
+                        currentToast?.show()
+                        var txts = sharedPreferences.getString("existingText", "")?: ""
+                        txts = txts.replace("[You]", "<font color='#27AE60'>[You]</font>")
+                        txts = txts.replace("[Iskra]", "<font color='#27AE60'>[Iskra]</font>")
+                        txts = txts.replace("\n", "<br>")
+                        responseText.text = HtmlCompat.fromHtml(txts, HtmlCompat.FROM_HTML_MODE_LEGACY)
+                    }
+                    val editor = sharedPreferences.edit()
+                    editor.putString("existingText", responseText.text.toString())
+                    editor.apply()
+                }
+            }
+        })
     }
 
     // Отправка запроса на сервер
@@ -107,6 +172,7 @@ class MainActivity : AppCompatActivity() {
         inputText.setText("")
         val json = JSONObject()
         json.put("prompt", prompt)
+        json.put("user_id", sharedPreferences.getString("userID", "") ?: "")
         serverIp = sharedPreferences.getString("serverIp", "https://eb93-77-222-113-143.ngrok-free.app") ?: "https://eb93-77-222-113-143.ngrok-free.app"
         val client = OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)  // Тайм-аут соединения
@@ -152,6 +218,9 @@ class MainActivity : AppCompatActivity() {
                     }
                     sendRequestButton.isEnabled = true
                     sendRequestButton.text = "▶"
+                    val editor = sharedPreferences.edit()
+                    editor.putString("existingText", responseText.text.toString())
+                    editor.apply()
                 }
             }
         })

@@ -2,9 +2,9 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:gravity="center|center_horizontal|fill_vertical"
     android:orientation="vertical"
-    android:padding="16dp"
-    android:gravity="center">
+    android:padding="16dp">
 
     <TextView
         android:id="@+id/textView"
@@ -32,20 +32,37 @@
         android:padding="16dp"
         android:textSize="18sp" />
 
+    <EditText
+        android:id="@+id/userIDText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:ems="10"
+        android:hint="User ID"
+        android:inputType="text"
+        android:padding="16sp" />
+
     <Switch
         android:id="@+id/themeSwitch"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Dark Theme"
         android:padding="16dp"
-        android:textSize="18sp"/>
+        android:text="Dark Theme"
+        android:textSize="18sp" />
+
+    <Button
+        android:id="@+id/resetButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="16sp"
+        android:text="Reset history"
+        android:textSize="18sp" />
 
     <Button
         android:id="@+id/saveButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Save Settings"
         android:padding="16dp"
+        android:text="Save Settings"
         android:textSize="18sp" />
 
 </LinearLayout>

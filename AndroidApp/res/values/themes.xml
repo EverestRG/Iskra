@@ -2,4 +2,5 @@
 <resources>
     <style name="Theme.Light" parent="ThemeOverlay.AppCompat.Light" />
     <style name="Theme.Dark" parent="ThemeOverlay.AppCompat.Dark" />
+    <style name="MyDialogStyle" parent="Theme.MaterialComponents.DayNight.Dialog.Alert" />
 </resources>
