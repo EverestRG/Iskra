@@ -48,7 +48,7 @@ class SettingsActivity : AppCompatActivity() {
         userIDText = findViewById(R.id.userIDText)
 
         // Загружаем сохранённые настройки
-        val savedIp = sharedPreferences.getString("serverIp", "https://eb93-77-222-113-143.ngrok-free.app")
+        val savedIp = sharedPreferences.getString("serverIp", "https://iskra-ai-server.loca.lt")
         ipEditText.setText(savedIp)
         userIDText.setText(sharedPreferences.getString("userID", ""))
         themeSwitch.isChecked = isDarkTheme
@@ -102,7 +102,7 @@ class SettingsActivity : AppCompatActivity() {
                         )
                         val request = Request.Builder()
                             .url(
-                                "${sharedPreferences.getString("serverIp", "https://eb93-77-222-113-143.ngrok-free.app") ?: "https://eb93-77-222-113-143.ngrok-free.app" + "/get_response"}/get_response")
+                                "${sharedPreferences.getString("serverIp", "https://iskra-ai-server.loca.lt") ?: "https://iskra-ai-server.loca.lt" + "/get_response"}/get_response")
                             .post(body)
                             .build()
                         client.newCall(request).enqueue(object : Callback {

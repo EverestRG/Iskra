@@ -23,7 +23,9 @@ import android.widget.Toast
 import androidx.core.text.HtmlCompat
 import java.util.UUID
 import android.content.Context
+import android.graphics.Rect
 import android.view.inputmethod.InputMethodManager
+import android.widget.ScrollView
 
 class MainActivity : AppCompatActivity() {
 
@@ -32,6 +34,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var responseText: TextView
     private lateinit var sharedPreferences: SharedPreferences
     private lateinit var darkThemeSwitch: Switch
+    private lateinit var scrollView: ScrollView
 
     private lateinit var serverIp: String
 
@@ -56,6 +59,7 @@ class MainActivity : AppCompatActivity() {
         inputText = findViewById(R.id.inputText)
         sendRequestButton = findViewById(R.id.sendRequestButton)
         responseText = findViewById(R.id.responseText)
+        scrollView = findViewById(R.id.scrollView)
         var settingsButton: Button = findViewById(R.id.settingsButton)
 
         inputText.setText(sharedPreferences.getString("inpTxt", "") ?: "")
@@ -63,13 +67,27 @@ class MainActivity : AppCompatActivity() {
         requestHistory()
 
         // Получаем сохранённый IP-адрес из SharedPreferences
-        serverIp = sharedPreferences.getString("serverIp", "https://eb93-77-222-113-143.ngrok-free.app") ?: "https://eb93-77-222-113-143.ngrok-free.app"
+        serverIp = sharedPreferences.getString("serverIp", "https://iskra-ai-server.loca.lt") ?: "https://iskra-ai-server.loca.lt"
 
         // Регистрация ActivityResultLauncher
         val settingsLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             if (result.resultCode == Activity.RESULT_OK) {
                 // Перезапуск текущей активности после успешного завершения другой активности
                 recreate()
+            }
+        }
+
+        scrollView.viewTreeObserver.addOnGlobalLayoutListener {
+            val rect = Rect()
+            scrollView.getWindowVisibleDisplayFrame(rect)
+
+            val screenHeight = scrollView.rootView.height
+            val keypadHeight = screenHeight - rect.bottom
+
+            if (keypadHeight > screenHeight * 0.15) { // Условие: клавиатура открыта
+                scrollView.post {
+                    scrollView.smoothScrollTo(0, scrollView.bottom)
+                }
             }
         }
 
@@ -105,7 +123,7 @@ class MainActivity : AppCompatActivity() {
     private fun requestHistory() {
         val json = JSONObject()
         json.put("user_id", sharedPreferences.getString("userID", "") ?: "")
-        serverIp = sharedPreferences.getString("serverIp", "https://eb93-77-222-113-143.ngrok-free.app") ?: "https://eb93-77-222-113-143.ngrok-free.app"
+        serverIp = sharedPreferences.getString("serverIp", "https://iskra-ai-server.loca.lt") ?: "https://iskra-ai-server.loca.lt"
         val client = OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)  // Тайм-аут соединения
             .writeTimeout(60, TimeUnit.SECONDS)    // Тайм-аут записи
@@ -128,6 +146,7 @@ class MainActivity : AppCompatActivity() {
                     txts = txts.replace("[Iskra]", "<font color='#27AE60'>[Iskra]</font>")
                     txts = txts.replace("\n", "<br>")
                     responseText.text = HtmlCompat.fromHtml(txts, HtmlCompat.FROM_HTML_MODE_LEGACY)
+                    scrollToBottom()
                 }
             }
 
@@ -155,6 +174,7 @@ class MainActivity : AppCompatActivity() {
                     val editor = sharedPreferences.edit()
                     editor.putString("existingText", responseText.text.toString())
                     editor.apply()
+                    scrollToBottom()
                 }
             }
         })
@@ -173,7 +193,7 @@ class MainActivity : AppCompatActivity() {
         val json = JSONObject()
         json.put("prompt", prompt)
         json.put("user_id", sharedPreferences.getString("userID", "") ?: "")
-        serverIp = sharedPreferences.getString("serverIp", "https://eb93-77-222-113-143.ngrok-free.app") ?: "https://eb93-77-222-113-143.ngrok-free.app"
+        serverIp = sharedPreferences.getString("serverIp", "https://iskra-ai-server.loca.lt") ?: "https://iskra-ai-server.loca.lt"
         val client = OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)  // Тайм-аут соединения
             .writeTimeout(60, TimeUnit.SECONDS)    // Тайм-аут записи
@@ -193,6 +213,7 @@ class MainActivity : AppCompatActivity() {
                     teeext = teeext.replace("[Iskra]", "<font color='#27AE60'>[Iskra]</font>")
                     teeext = teeext.replace("\n", "<br>")
                     responseText.text = HtmlCompat.fromHtml(teeext, HtmlCompat.FROM_HTML_MODE_LEGACY)
+                    scrollToBottom()
                 }
                 sendRequestButton.isEnabled = true
                 sendRequestButton.text = "▶"
@@ -221,9 +242,18 @@ class MainActivity : AppCompatActivity() {
                     val editor = sharedPreferences.edit()
                     editor.putString("existingText", responseText.text.toString())
                     editor.apply()
+                    scrollToBottom()
                 }
             }
         })
+    }
+
+    fun scrollToBottom() {
+        if (responseText.text != "") {
+            scrollView.post {
+                scrollView.smoothScrollTo(0, scrollView.bottom)
+            }
+        }
     }
 
     // Проверка разрешений на доступ к данным устройства
