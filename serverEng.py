@@ -15,7 +15,7 @@ dialol_model_path = "./models/dialolarge"
 rugpt_model_path = "./models/rugpt"
 
 # Выбор модели: gpt2 или dialo
-model_choice = "rugpt"  # Можно менять на "gpt2" или "dialo"
+model_choice = "dialolarge"  # Можно менять на "gpt2" или "dialo"
 
 # Функции для сохранения и загрузки истории
 def load_user_history(user_id):
@@ -34,15 +34,8 @@ def load_user_history(user_id):
     if os.path.exists(token_history_file):
         with open(token_history_file, 'r', encoding='utf-8') as f:
             readed = f.readlines()
-            if readed == [] or readed == [""]:
-                readed = ["Привет, Искра! Расскажи о себе.", "Привет! Меня зовут Искра, я очень дружелюбная девушка."]
             for i in range(len(readed)):
                 user_token_history.append(tokenizer.encode(readed[i], return_tensors="pt", truncation=True, max_length=1024))
-    else:
-        readed = ["Привет, Искра! Расскажи о себе.", "Привет! Меня зовут Искра, я очень дружелюбная девушка."]
-        for i in range(len(readed)):
-            user_token_history.append(
-                tokenizer.encode(readed[i], return_tensors="pt", truncation=True, max_length=1024))
 
     return user_history, user_token_history
 
@@ -122,7 +115,25 @@ def clean_generated_text(text):
     кроме часто используемых исключений.
     """
     # Исключения для коротких слов
-    short_word_exceptions = {"-", "у", "ок", "хе", "хи", "да", "а", "ха", "я", "ты", "те", "ту", "то", "он", "не", "но", "и", "по", "с", "со", "на", "от", "за", "в"}
+    short_word_exceptions = {"i", "im", "ur", "am", "on", "of", "an", "a", "it", "is", "in", "at", "to", "by", "as", "he", "we", "do", "be", "go", "me", "my", "no", "or", "up", "us"}
+
+    text = text.replace(' DDD', '')
+    text = text.replace('DDD', '')
+    text = text.replace('And thanks again.', '')
+    text = text.replace('Thanks again.', '')
+    text = text.replace('Thanks again', '')
+
+    # Убираем случайные символы
+    text = re.sub(r'[^\w\s.,!?]', '', text)
+
+    # Удаляем короткие слова, кроме исключений
+    filtered_words = [
+        word for word in text.split()
+        if len(word) > 2 or word.lower() in short_word_exceptions
+    ]
+
+    # Собираем текст обратно
+    text = ' '.join(filtered_words)
 
     filtered_words = [
         word for word in text.split()
@@ -130,12 +141,7 @@ def clean_generated_text(text):
     ]
 
     # Собираем текст обратно
-    #text = ' '.join(filtered_words)
-
-    text = text.replace(')))', '')
-    text = text.replace(' ) ', '')
-    text = text.replace('(((', '')
-    text = text.replace(' ( ', '')
+    text = ' '.join(filtered_words)
 
     # Убираем лишние пробелы
     text = re.sub(r'\s+', ' ', text).strip()
@@ -173,53 +179,50 @@ def generate_text(prompt, user_history, user_token_history):
     # Формируем статический контекст
     static_instructions = "User1: Привет, я Искра! Чем могу помочь?"
 
-    # Формируем динамическую часть истории
+    # Формируем динамическую часть истории (история диалога)
     conversation_history = ""
-    for i in range(0, len(user_token_history), 2):
-        user_input = tokenizer.decode(user_token_history[i][0], skip_special_tokens=True).replace('\n', '')
-        bot_response = tokenizer.decode(user_token_history[i + 1][0], skip_special_tokens=True) if i + 1 < len(user_token_history) else ""
-        if not conversation_history == "":
-            conversation_history += f"\n{user_input}\n{bot_response}"
-        else:
-            conversation_history += f"{user_input}\n{bot_response}"
+    for i in range(0, len(user_token_history), 2):  # Чередуем запросы и ответы
+        user_input = tokenizer.decode(user_token_history[i][0], skip_special_tokens=True)
+        bot_response = tokenizer.decode(user_token_history[i + 1][0], skip_special_tokens=True) if i + 1 < len(
+            user_token_history) else ""
+        conversation_history += f"\n<|user|> {user_input}\n<|iskra|> {bot_response}{tokenizer.eos_token}"
 
-    if not conversation_history == "":
-        conversation_history += f"\n{tokenizer.bos_token + prompt + tokenizer.eos_token}"
-    else:
-        conversation_history += f"{tokenizer.bos_token + prompt + tokenizer.eos_token}"
+    # Добавляем текущий запрос
+    conversation_history += f"\n<|user|> {prompt}"
+
+    # Объединяем контекст
+    # context = "".join([static_instructions, conversation_history])
 
     context = conversation_history
 
-    context = f"{prompt + tokenizer.eos_token}"
+    print(context)
 
     # Токенизация контекста
-    inputs = tokenizer.encode(context, return_tensors="pt", truncation=True, max_length=1024)
+    inputs = tokenizer.encode(context + tokenizer.eos_token, return_tensors="pt", truncation=True, max_length=1024)
+    # inputs = tokenizer.encode(prompt + tokenizer.eos_token, return_tensors="pt", truncation=True, max_length=1024)
 
     # Добавляем текущий запрос в историю
     user_token_history.append(tokenizer.encode(f"{prompt}", return_tensors="pt"))
 
     # Ограничиваем длину истории
-    if len(user_token_history) > 2:  # 1 пара (вопрос-ответ)
+    if len(user_token_history) > 2:  # 3 пары (вопрос-ответ)
         user_token_history.pop(0)
         user_token_history.pop(0)
 
+    # Маска внимания
     attention_mask = torch.ones(inputs.shape, device=inputs.device)
-    #attention_mask = (inputs != tokenizer.pad_token_id).long()
-
-    print(context)
 
     # Генерация текста
     outputs = model.generate(
         inputs,
-        #max_length=300,
-        #early_stopping=True,
+        max_length=300,
         num_return_sequences=1,
-        no_repeat_ngram_size=3,
+        no_repeat_ngram_size=2,
         temperature=0.25,
-        top_k=80,
-        top_p=0.9,
+        top_k=45,
+        top_p=0.7,
         max_new_tokens=25,
-        repetition_penalty=1.7,
+        repetition_penalty=2.0,
         pad_token_id=tokenizer.eos_token_id,
         eos_token_id=tokenizer.eos_token_id,
         attention_mask=attention_mask,
@@ -287,4 +290,4 @@ def get_history():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=6000)
