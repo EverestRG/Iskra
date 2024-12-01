@@ -1,8 +1,10 @@
 import os
 from flask import Flask, request, jsonify
 from transformers import GPT2LMHeadModel, GPT2Tokenizer, AutoModelForCausalLM, AutoTokenizer
-from emotion_index import calculate_happiness_index
-import torch, re, random, json
+#from emotion_index import calculate_happiness_index
+import torch, re, random
+from contextshift import detect_context_shift
+from  responsesranker import rank_responses
 
 print("Loading model...")
 
@@ -34,15 +36,8 @@ def load_user_history(user_id):
     if os.path.exists(token_history_file):
         with open(token_history_file, 'r', encoding='utf-8') as f:
             readed = f.readlines()
-            if readed == [] or readed == [""]:
-                readed = ["Привет, Искра! Расскажи о себе.", "Привет! Меня зовут Искра, я очень дружелюбная девушка."]
             for i in range(len(readed)):
                 user_token_history.append(tokenizer.encode(readed[i], return_tensors="pt", truncation=True, max_length=1024))
-    else:
-        readed = ["Привет, Искра! Расскажи о себе.", "Привет! Меня зовут Искра, я очень дружелюбная девушка."]
-        for i in range(len(readed)):
-            user_token_history.append(
-                tokenizer.encode(readed[i], return_tensors="pt", truncation=True, max_length=1024))
 
     return user_history, user_token_history
 
@@ -60,7 +55,12 @@ def save_user_history(user_id, user_history, user_token_history):
     with open(token_history_file, 'w', encoding='utf-8') as f:
         story = []
         for i in range(len(user_token_history)):
-            story.append(tokenizer.decode(user_token_history[i][0], skip_special_tokens=True))
+            story.append(tokenizer.decode(user_token_history[i][0], skip_special_tokens=True).replace('\n', ''))
+        while True:
+            try:
+                story.pop(story.index(''))
+            except:
+                break
         f.write('\n'.join(story))
 
 # Проверяем, есть ли папка с моделью
@@ -94,7 +94,7 @@ def load_model(model_choice):
         elif model_choice == "dialolarge":
             model_name = "microsoft/DialoGPT-large"
         elif model_choice == "rugpt":
-            model_name = "sberbank-ai/rugpt3large_based_on_gpt2"
+            model_name = "Kirili4ik/ruDialoGpt3-medium-finetuned-telegram"
         model = model_class.from_pretrained(model_name)
         tokenizer = tokenizer_class.from_pretrained(model_name)
         # Сохраняем модель в папку
@@ -173,24 +173,45 @@ def generate_text(prompt, user_history, user_token_history):
     # Формируем статический контекст
     static_instructions = "User1: Привет, я Искра! Чем могу помочь?"
 
+    def txtlen(string: str) -> str:
+        length = len(tokenizer.encode(string))
+        if length <= 15:
+            return '1'
+        if length <= 50:
+            return '2'
+        if length <= 256:
+            return '3'
+        return '-'
+
+    shifted = False
+
+    if len(user_token_history) > 0:
+        outs = []
+        for i in range(len(user_token_history)):
+            tt = tokenizer.decode(user_token_history[i][0], skip_special_tokens=True).replace('\n', '')
+            if tt.endswith(('.', '!', '?')):
+                outs.append(tt)
+            else:
+                outs.append(tt + '.')
+        outs.append(prompt)
+        shifted = detect_context_shift(outs, 0.42)
+
+    if shifted:
+        user_token_history.clear()
+
     # Формируем динамическую часть истории
     conversation_history = ""
     for i in range(0, len(user_token_history), 2):
         user_input = tokenizer.decode(user_token_history[i][0], skip_special_tokens=True).replace('\n', '')
-        bot_response = tokenizer.decode(user_token_history[i + 1][0], skip_special_tokens=True) if i + 1 < len(user_token_history) else ""
-        if not conversation_history == "":
-            conversation_history += f"\n{user_input}\n{bot_response}"
-        else:
-            conversation_history += f"{user_input}\n{bot_response}"
+        bot_response = tokenizer.decode(user_token_history[i + 1][0], skip_special_tokens=True).replace('\n', '') if i + 1 < len(user_token_history) else ""
+        conversation_history += f"|0|{txtlen(user_input)}|{user_input}\n|1|{txtlen(bot_response)}||0|1|{bot_response}\n"
 
-    if not conversation_history == "":
-        conversation_history += f"\n{tokenizer.bos_token + prompt + tokenizer.eos_token}"
-    else:
-        conversation_history += f"{tokenizer.bos_token + prompt + tokenizer.eos_token}"
+    clean_context = conversation_history
+    conversation_history += f"|0|{txtlen(prompt)}|{prompt}{tokenizer.eos_token}|1|2|"
 
     context = conversation_history
 
-    context = f"{prompt + tokenizer.eos_token}"
+    #context = f"{prompt + tokenizer.eos_token}"
 
     # Токенизация контекста
     inputs = tokenizer.encode(context, return_tensors="pt", truncation=True, max_length=1024)
@@ -199,7 +220,7 @@ def generate_text(prompt, user_history, user_token_history):
     user_token_history.append(tokenizer.encode(f"{prompt}", return_tensors="pt"))
 
     # Ограничиваем длину истории
-    if len(user_token_history) > 2:  # 1 пара (вопрос-ответ)
+    if len(user_token_history) > 4:  # 1 пара (вопрос-ответ)
         user_token_history.pop(0)
         user_token_history.pop(0)
 
@@ -211,37 +232,44 @@ def generate_text(prompt, user_history, user_token_history):
     # Генерация текста
     outputs = model.generate(
         inputs,
-        #max_length=300,
-        #early_stopping=True,
-        num_return_sequences=1,
+        max_length=256,
+        early_stopping=True,
+        num_return_sequences=2,
         no_repeat_ngram_size=3,
-        temperature=0.25,
-        top_k=80,
-        top_p=0.9,
-        max_new_tokens=25,
-        repetition_penalty=1.7,
-        pad_token_id=tokenizer.eos_token_id,
+        num_beams=4,
+        temperature=0.65,
+        top_k=70,
+        top_p=0.85,
+        max_new_tokens=100,
+        repetition_penalty=1.4,
+        pad_token_id=tokenizer.pad_token_id,
         eos_token_id=tokenizer.eos_token_id,
         attention_mask=attention_mask,
         do_sample=True
     )
 
-    # Декодируем текст
-    text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    responses = [tokenizer.decode(output, skip_special_tokens=True) for output in outputs]
+    responsesclean = [response.replace(context.replace(tokenizer.eos_token, '').replace(tokenizer.bos_token, ''), '') for response in responses]
 
-    text = text.replace(context.replace(tokenizer.eos_token, '').replace(tokenizer.bos_token, ''), '')
+    # Декодируем текст
+    #if not clean_context == "":
+    #    text = rank_responses(prompt, responsesclean, clean_context)
+    #else:
+    #    text = rank_responses(prompt, responsesclean)
+
+    text = rank_responses(prompt, responsesclean)
 
     # Чистим текст
     text = clean_generated_text(text)
-    text = trim_to_sentence(text)
+    #text = trim_to_sentence(text)
 
     # Добавляем ответ в историю
     response_tokens = tokenizer.encode(f"{text}", return_tensors="pt")
     user_token_history.append(response_tokens)
 
     # Добавляем эмоцию
-    if random.choice([0, 1, 1, 1]):
-        text = add_emotion(text, calculate_happiness_index(text))
+    #if random.choice([0, 1, 1, 1]):
+    #    text = add_emotion(text, calculate_happiness_index(text))
 
     # Добавляем в историю диалога
     user_history.append(f"[You]: {prompt}\n\n[Iskra]: {text}")

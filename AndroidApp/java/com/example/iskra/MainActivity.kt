@@ -24,6 +24,8 @@ import androidx.core.text.HtmlCompat
 import java.util.UUID
 import android.content.Context
 import android.graphics.Rect
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.inputmethod.InputMethodManager
 import android.widget.ScrollView
 
@@ -54,6 +56,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         var currentToast: Toast? = null
+        var lastrequest = ""
 
         // Инициализация элементов
         inputText = findViewById(R.id.inputText)
@@ -64,7 +67,11 @@ class MainActivity : AppCompatActivity() {
 
         inputText.setText(sharedPreferences.getString("inpTxt", "") ?: "")
 
-        requestHistory()
+        try {
+            requestHistory()
+        } catch (e: Exception) {
+            null
+        }
 
         // Получаем сохранённый IP-адрес из SharedPreferences
         serverIp = sharedPreferences.getString("serverIp", "https://iskra-ai-server.loca.lt") ?: "https://iskra-ai-server.loca.lt"
@@ -100,15 +107,45 @@ class MainActivity : AppCompatActivity() {
             editor.apply()
         }
 
+        inputText.addTextChangedListener(object: TextWatcher{
+            override fun beforeTextChanged(
+                charSequence: CharSequence?,
+                start: Int,
+                before: Int,
+                count: Int
+            ) {
+                // Действие до изменения текста (например, удаление текста)
+            }
+            override fun onTextChanged(
+                charSequence: CharSequence?,
+                start: Int,
+                before: Int,
+                count: Int
+            ) {
+                if (inputText.text.toString() != ""){
+                    sendRequestButton.text = "▶"
+                }
+            }
+            override fun afterTextChanged(editable: Editable?) {
+                // Действие после изменения текста
+                // Здесь можно обработать изменённый текст
+                editable?.let {
+                    null
+                }
+            }
+        })
+
         // Кнопка для отправки запроса
         sendRequestButton.setOnClickListener {
+            if (sendRequestButton.text != "↻") {
+                lastrequest = inputText.text.toString()
+            }
             if (currentFocus != null) {
                 val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
                 imm.hideSoftInputFromWindow(currentFocus!!.windowToken, 0)
             }
-            val prompt = inputText.text.toString()
-            if (prompt.isNotBlank()) {
-                sendRequest(prompt)
+            if (lastrequest.isNotBlank()) {
+                sendRequest(lastrequest)
             } else {
                 currentToast?.cancel()
                 currentToast = Toast.makeText(this, "Please enter a prompt.", Toast.LENGTH_SHORT)
@@ -121,70 +158,104 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun requestHistory() {
-        val json = JSONObject()
-        json.put("user_id", sharedPreferences.getString("userID", "") ?: "")
-        serverIp = sharedPreferences.getString("serverIp", "https://iskra-ai-server.loca.lt") ?: "https://iskra-ai-server.loca.lt"
-        val client = OkHttpClient.Builder()
-            .connectTimeout(10, TimeUnit.SECONDS)  // Тайм-аут соединения
-            .writeTimeout(60, TimeUnit.SECONDS)    // Тайм-аут записи
-            .readTimeout(60, TimeUnit.SECONDS)     // Тайм-аут чтения
-            .build()
-        val body = RequestBody.create("application/json; charset=utf-8".toMediaType(), json.toString())
-        val request = Request.Builder()
-            .url(serverIp + "/get_history")
-            .post(body)
-            .build()
-        var currentToast: Toast? = null
-        client.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                currentToast?.cancel()
-                currentToast = Toast.makeText(applicationContext, "Failed requesting dialog history from server!", Toast.LENGTH_SHORT)
-                currentToast?.show()
-                runOnUiThread {
-                    var txts = sharedPreferences.getString("existingText", "")?: ""
-                    txts = txts.replace("[You]", "<font color='#27AE60'>[You]</font>")
-                    txts = txts.replace("[Iskra]", "<font color='#27AE60'>[Iskra]</font>")
-                    txts = txts.replace("\n", "<br>")
-                    responseText.text = HtmlCompat.fromHtml(txts, HtmlCompat.FROM_HTML_MODE_LEGACY)
-                    scrollToBottom()
-                }
-            }
-
-            override fun onResponse(call: Call, response: Response) {
-                val responseString = response.body?.string()
-                runOnUiThread {
-                    try {
-                        //Парсим JSON
-                        val jsonResponse = JSONObject(responseString ?: "No response from server.")
-                        var responseTextValue = jsonResponse.getString("response")
-                        responseTextValue = responseTextValue.replace("[You]", "<font color='#27AE60'>[You]</font>")
-                        responseTextValue = responseTextValue.replace("[Iskra]", "<font color='#27AE60'>[Iskra]</font>")
-                        responseTextValue = responseTextValue.replace("\n", "<br>")
-                        responseText.text = HtmlCompat.fromHtml(responseTextValue, HtmlCompat.FROM_HTML_MODE_LEGACY)
-                    } catch (e: Exception) {
-                        currentToast?.cancel()
-                        currentToast = Toast.makeText(applicationContext, "Failed parsing dialog history from server!", Toast.LENGTH_SHORT)
-                        currentToast?.show()
-                        var txts = sharedPreferences.getString("existingText", "")?: ""
+        var currentToasts: Toast? = null
+        try {
+            val json = JSONObject()
+            json.put("user_id", sharedPreferences.getString("userID", "") ?: "")
+            serverIp =
+                sharedPreferences.getString("serverIp", "https://iskra-ai-server.loca.lt")
+                    ?: "https://iskra-ai-server.loca.lt"
+            val client = OkHttpClient.Builder()
+                .connectTimeout(10, TimeUnit.SECONDS)  // Тайм-аут соединения
+                .writeTimeout(60, TimeUnit.SECONDS)    // Тайм-аут записи
+                .readTimeout(60, TimeUnit.SECONDS)     // Тайм-аут чтения
+                .build()
+            val body =
+                RequestBody.create("application/json; charset=utf-8".toMediaType(), json.toString())
+            val request = Request.Builder()
+                .url(serverIp + "/get_history")
+                .post(body)
+                .build()
+            var currentToastt: Toast? = null
+            client.newCall(request).enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    runOnUiThread {
+                        currentToastt?.cancel()
+                        currentToastt = Toast.makeText(
+                            applicationContext,
+                            "Failed requesting dialog history from server!",
+                            Toast.LENGTH_SHORT
+                        )
+                        currentToastt?.show()
+                        var txts = sharedPreferences.getString("existingText", "") ?: ""
                         txts = txts.replace("[You]", "<font color='#27AE60'>[You]</font>")
                         txts = txts.replace("[Iskra]", "<font color='#27AE60'>[Iskra]</font>")
                         txts = txts.replace("\n", "<br>")
-                        responseText.text = HtmlCompat.fromHtml(txts, HtmlCompat.FROM_HTML_MODE_LEGACY)
+                        responseText.text =
+                            HtmlCompat.fromHtml(txts, HtmlCompat.FROM_HTML_MODE_LEGACY)
+                        scrollToBottom()
                     }
-                    val editor = sharedPreferences.edit()
-                    editor.putString("existingText", responseText.text.toString())
-                    editor.apply()
-                    scrollToBottom()
                 }
-            }
-        })
+
+                override fun onResponse(call: Call, response: Response) {
+                    val responseString = response.body?.string()
+                    runOnUiThread {
+                        try {
+                            //Парсим JSON
+                            val jsonResponse =
+                                JSONObject(responseString ?: "No response from server.")
+                            var responseTextValue = jsonResponse.getString("response")
+                            responseTextValue = responseTextValue.replace(
+                                "[You]",
+                                "<font color='#27AE60'>[You]</font>"
+                            )
+                            responseTextValue = responseTextValue.replace(
+                                "[Iskra]",
+                                "<font color='#27AE60'>[Iskra]</font>"
+                            )
+                            responseTextValue = responseTextValue.replace("\n", "<br>")
+                            responseText.text = HtmlCompat.fromHtml(
+                                responseTextValue,
+                                HtmlCompat.FROM_HTML_MODE_LEGACY
+                            )
+                        } catch (e: Exception) {
+                            currentToastt?.cancel()
+                            currentToastt = Toast.makeText(
+                                applicationContext,
+                                "Failed parsing dialog history from server!",
+                                Toast.LENGTH_SHORT
+                            )
+                            currentToastt?.show()
+                            var txts = sharedPreferences.getString("existingText", "") ?: ""
+                            txts = txts.replace("[You]", "<font color='#27AE60'>[You]</font>")
+                            txts = txts.replace("[Iskra]", "<font color='#27AE60'>[Iskra]</font>")
+                            txts = txts.replace("\n", "<br>")
+                            responseText.text =
+                                HtmlCompat.fromHtml(txts, HtmlCompat.FROM_HTML_MODE_LEGACY)
+                        }
+                        val editor = sharedPreferences.edit()
+                        editor.putString("existingText", responseText.text.toString())
+                        editor.apply()
+                        scrollToBottom()
+                    }
+                }
+            })
+        } catch (e: Exception){
+            currentToasts?.cancel()
+            currentToasts = Toast.makeText(
+                applicationContext,
+                "Failed pinging server!",
+                Toast.LENGTH_SHORT
+            )
+            currentToasts?.show()
+        }
     }
 
     // Отправка запроса на сервер
     private fun sendRequest(prompt: String) {
         sendRequestButton.isEnabled = false
         sendRequestButton.text = "..."
-        var txt = responseText.text.toString() + "<br><br><font color='#27AE60'>[You]</font>: ${inputText.text}<br><br><font color='#F4D03F'>Generating...</font>"
+        var txt = responseText.text.toString() + "<br><br><font color='#27AE60'>[You]</font>: ${prompt}<br><br><font color='#F4D03F'>Generating...</font>"
         txt = txt.replace("[You]", "<font color='#27AE60'>[You]</font>")
         txt = txt.replace("[Iskra]", "<font color='#27AE60'>[Iskra]</font>")
         txt = txt.replace("\n", "<br>")
@@ -204,48 +275,85 @@ class MainActivity : AppCompatActivity() {
             .url(serverIp + "/get_response")
             .post(body)
             .build()
-
-        client.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                runOnUiThread {
-                    var teeext = responseText.text.toString().replace("Generating...", "<font color='#A93226'>Failed to connect to server: ${e.message}</font>")
-                    teeext = teeext.replace("[You]", "<font color='#27AE60'>[You]</font>")
-                    teeext = teeext.replace("[Iskra]", "<font color='#27AE60'>[Iskra]</font>")
-                    teeext = teeext.replace("\n", "<br>")
-                    responseText.text = HtmlCompat.fromHtml(teeext, HtmlCompat.FROM_HTML_MODE_LEGACY)
-                    scrollToBottom()
-                }
-                sendRequestButton.isEnabled = true
-                sendRequestButton.text = "▶"
-            }
-
-            override fun onResponse(call: Call, response: Response) {
-                val responseString = response.body?.string()
-                runOnUiThread {
-                    try {
-                        //Парсим JSON
-                        val jsonResponse = JSONObject(responseString ?: "No response from server.")
-                        var responseTextValue = jsonResponse.getString("response")
-                        responseTextValue = responseTextValue.replace("[You]", "<font color='#27AE60'>[You]</font>")
-                        responseTextValue = responseTextValue.replace("[Iskra]", "<font color='#27AE60'>[Iskra]</font>")
-                        responseTextValue = responseTextValue.replace("\n", "<br>")
-                        responseText.text = HtmlCompat.fromHtml(responseTextValue, HtmlCompat.FROM_HTML_MODE_LEGACY)
-                    } catch (e: Exception) {
-                        var teext = responseText.text.toString().replace("Generating...", "<font color='#A93226'>Error parsing response.</font>")
-                        teext = teext.replace("[You]", "<font color='#27AE60'>[You]</font>")
-                        teext = teext.replace("[Iskra]", "<font color='#27AE60'>[Iskra]</font>")
-                        teext = teext.replace("\n", "<br>")
-                        responseText.text = HtmlCompat.fromHtml(teext, HtmlCompat.FROM_HTML_MODE_LEGACY)
+        var retrying = false
+        var currentToastts: Toast? = null
+        try {
+            client.newCall(request).enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    runOnUiThread {
+                        var teeext = responseText.text.toString().replace(
+                            "Generating...",
+                            "<font color='#A93226'>Failed to connect to server: ${e.message}</font>"
+                        )
+                        teeext = teeext.replace("[You]", "<font color='#27AE60'>[You]</font>")
+                        teeext = teeext.replace("[Iskra]", "<font color='#27AE60'>[Iskra]</font>")
+                        teeext = teeext.replace("\n", "<br>")
+                        responseText.text =
+                            HtmlCompat.fromHtml(teeext, HtmlCompat.FROM_HTML_MODE_LEGACY)
+                        retrying = true
+                        scrollToBottom()
                     }
                     sendRequestButton.isEnabled = true
-                    sendRequestButton.text = "▶"
-                    val editor = sharedPreferences.edit()
-                    editor.putString("existingText", responseText.text.toString())
-                    editor.apply()
-                    scrollToBottom()
+                    if (retrying) {
+                        sendRequestButton.text = "↻"
+                    } else {
+                        sendRequestButton.text = "▶"
+                    }
                 }
-            }
-        })
+
+                override fun onResponse(call: Call, response: Response) {
+                    val responseString = response.body?.string()
+                    runOnUiThread {
+                        try {
+                            //Парсим JSON
+                            val jsonResponse =
+                                JSONObject(responseString ?: "No response from server.")
+                            var responseTextValue = jsonResponse.getString("response")
+                            responseTextValue = responseTextValue.replace(
+                                "[You]",
+                                "<font color='#27AE60'>[You]</font>"
+                            )
+                            responseTextValue = responseTextValue.replace(
+                                "[Iskra]",
+                                "<font color='#27AE60'>[Iskra]</font>"
+                            )
+                            responseTextValue = responseTextValue.replace("\n", "<br>")
+                            responseText.text = HtmlCompat.fromHtml(
+                                responseTextValue,
+                                HtmlCompat.FROM_HTML_MODE_LEGACY
+                            )
+                        } catch (e: Exception) {
+                            var teext = responseText.text.toString().replace(
+                                "Generating...",
+                                "<font color='#A93226'>Error parsing response.</font>"
+                            )
+                            teext = teext.replace("[You]", "<font color='#27AE60'>[You]</font>")
+                            teext = teext.replace("[Iskra]", "<font color='#27AE60'>[Iskra]</font>")
+                            teext = teext.replace("\n", "<br>")
+                            responseText.text =
+                                HtmlCompat.fromHtml(teext, HtmlCompat.FROM_HTML_MODE_LEGACY)
+                            retrying = true
+                        }
+                        sendRequestButton.isEnabled = true
+                        if (retrying) {
+                            sendRequestButton.text = "↻"
+                        } else {
+                            sendRequestButton.text = "▶"
+                        }
+                        val editor = sharedPreferences.edit()
+                        editor.putString("existingText", responseText.text.toString())
+                        editor.apply()
+                        scrollToBottom()
+                    }
+                }
+            })
+        } catch (e: Exception) {
+            currentToastts?.cancel()
+            currentToastts = Toast.makeText(applicationContext, "Server pinging error", Toast.LENGTH_SHORT)
+            currentToastts?.show()
+            sendRequestButton.isEnabled = true
+            sendRequestButton.text = "▶"
+        }
     }
 
     fun scrollToBottom() {

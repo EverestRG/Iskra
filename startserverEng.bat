@@ -1,2 +1,0 @@
-python serverEng.py
-pause

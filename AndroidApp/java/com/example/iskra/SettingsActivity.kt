@@ -115,6 +115,8 @@ class SettingsActivity : AppCompatActivity() {
                                         Toast.LENGTH_SHORT
                                     )
                                     currentToast?.show()
+                                    setResult(Activity.RESULT_OK)
+                                    finish()  // Закрываем экран настроек
                                 }
                             }
 
@@ -134,6 +136,8 @@ class SettingsActivity : AppCompatActivity() {
                                                 Toast.LENGTH_SHORT
                                             )
                                             currentToast?.show()
+                                            setResult(Activity.RESULT_OK)
+                                            finish()  // Закрываем экран настроек
                                         }
                                     } catch (e: Exception) {
                                         currentToast?.cancel()
@@ -143,12 +147,12 @@ class SettingsActivity : AppCompatActivity() {
                                             Toast.LENGTH_SHORT
                                         )
                                         currentToast?.show()
+                                        setResult(Activity.RESULT_OK)
+                                        finish()  // Закрываем экран настроек
                                     }
                                 }
                             }
                         })
-                        setResult(Activity.RESULT_OK)
-                        finish()  // Закрываем экран настроек
                     }
                 }
             }
