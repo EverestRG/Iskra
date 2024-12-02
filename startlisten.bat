@@ -1,1 +1,1 @@
-lt --port 5000 --subdomain iskra-ai-server
+lt --port 6000 --subdomain iskra-ai-serverr

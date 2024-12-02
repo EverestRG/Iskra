@@ -1,3 +1,5 @@
+import random
+
 from transformers import T5ForConditionalGeneration, T5Tokenizer
 from transformers import LogitsProcessorList, MinLengthLogitsProcessor
 import os, re
@@ -69,4 +71,6 @@ def rank_responses(prompt, responses, conversation_history=None):
     # Возвращаем ответ с максимальным "качеством"
     best_response_index = scores.index(max(scores))
     print(responses)
+    if scores[0] == scores[1]:
+        return responses[random.choice([0, 1])]
     return responses[best_response_index]

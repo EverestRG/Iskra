@@ -146,7 +146,6 @@ def clean_generated_text(text):
 
     # Убираем лишние пробелы
     text = re.sub(r'\s+', ' ', text).strip()
-
     return text
 
 # Функция для добавления эмоции в ответ
@@ -176,6 +175,13 @@ def generate_text(prompt, user_history, user_token_history):
         user_history.clear()  # Очищаем историю сообщений
         user_token_history.clear()  # Очищаем историю токенов
         return "%|DONE|%", user_history, user_token_history  # Отправляем подтверждение сброса
+
+    if prompt.lower().replace(' ', '') == "привет" or prompt.lower().replace(' ', '') == "здравствуй" or prompt.lower().replace(' ', '') == "здравствуйте" or prompt.lower().replace(' ', '') == "приветствую":
+        answer = random.choice(['Привет, как дела?', 'Ну привет. Как ты?', 'Приветики, как дела?', 'Привет. Что делаешь?'])
+        user_history.append(f'[You]: {prompt}\n\n[Iskra]: {answer}')
+        user_token_history.append(tokenizer.encode(f"{prompt}", return_tensors="pt"))
+        user_token_history.append(tokenizer.encode(f"{answer}", return_tensors="pt"))
+        return user_history[-1], user_history, user_token_history
 
     # Формируем статический контекст
     static_instructions = "User1: Привет, я Искра! Чем могу помочь?"
@@ -243,12 +249,12 @@ def generate_text(prompt, user_history, user_token_history):
         early_stopping=True,
         num_return_sequences=2,
         no_repeat_ngram_size=3,
-        num_beams=4,
-        temperature=0.65,
+        num_beams=2,
+        temperature=0.6,
         top_k=70,
         top_p=0.85,
         max_new_tokens=100,
-        repetition_penalty=1.4,
+        repetition_penalty=1.5,
         pad_token_id=tokenizer.pad_token_id,
         eos_token_id=tokenizer.eos_token_id,
         attention_mask=attention_mask,
@@ -322,4 +328,4 @@ def get_history():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=6000)
