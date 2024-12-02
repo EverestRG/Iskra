@@ -1,6 +1,4 @@
-import win32api, os, sys, time, subprocess
-
-win32api.ShellExecute(0, "open", f"\"{os.path.dirname(sys.argv[0])}\\server.exe\"", "\"1\"", ".", 0)
+import os, sys, time, subprocess
 
 def run_command():
     # Функция запуска команды
@@ -9,20 +7,35 @@ def run_command():
                             stderr=subprocess.PIPE,
                             text=True)
 
-time.sleep(5)
+def start_server():
+    return subprocess.Popen([f"{os.path.dirname(sys.argv[0])}\\server.exe", "1"],
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            text=True)
 
+print('Starting server...')
+serverprocess = start_server()
+
+time.sleep(5)
+print("Server started!")
+
+print('Starting listener...')
 process = run_command()
+print('Listener started!')
 
 while True:
     if process.poll() is not None:  # Если процесс завершился
-        print("Server down. Restarting...")
+        print("Listener down. Restarting...")
 
         stdout, stderr = process.communicate()
-        print("Вывод команды:", stdout)
-        print("Ошибки:", stderr)
+        print("Listener output:", stdout)
+        print("Listener error:", stderr)
 
         # Перезапускаем процесс
         process = run_command()
-    else:
-        # Если процесс всё ещё работает, подождём немного
-        time.sleep(1)
+    #else:
+    #    # Если процесс всё ещё работает, подождём немного
+    #    time.sleep(1)
+    stdout, stderr = serverprocess.communicate()
+    if not stdout == "":
+        print(f"Server output: {stdout}")
