@@ -1,10 +1,17 @@
-import os
+import os, sys
 from flask import Flask, request, jsonify
 from transformers import GPT2LMHeadModel, GPT2Tokenizer, AutoModelForCausalLM, AutoTokenizer
 #from emotion_index import calculate_happiness_index
 import torch, re, random
 from contextshift import detect_context_shift
 from  responsesranker import rank_responses
+
+try:
+    gg = sys.argv[1]
+except:
+    print("-----------------------------------")
+    print("WARNING: Server is launching without launcher. You won't be able to connect any devices to it.")
+    print("-----------------------------------")
 
 print("Loading model...")
 
