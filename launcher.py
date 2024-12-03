@@ -33,9 +33,6 @@ while True:
 
         # Перезапускаем процесс
         process = run_command()
-    #else:
-    #    # Если процесс всё ещё работает, подождём немного
-    #    time.sleep(1)
-    stdout, stderr = serverprocess.communicate()
-    if not stdout == "":
-        print(f"Server output: {stdout}")
+    else:
+        # Если процесс всё ещё работает, подождём немного
+        time.sleep(1)
