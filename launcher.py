@@ -5,13 +5,17 @@ def run_command():
     return subprocess.Popen(["cmd", "/c", "lt --port 5000 --subdomain iskra-ai-server"],
                             stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE,
-                            text=True)
+                            text=True,
+                            shell=True,
+                            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
 
 def start_server():
     return subprocess.Popen([f"{os.path.dirname(sys.argv[0])}\\server.exe", "1"],
                             stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE,
-                            text=True)
+                            text=True,
+                            shell=True,
+                            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
 
 print('Starting server...')
 serverprocess = start_server()

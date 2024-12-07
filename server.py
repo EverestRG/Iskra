@@ -4,7 +4,7 @@ from transformers import GPT2LMHeadModel, GPT2Tokenizer, AutoModelForCausalLM, A
 #from emotion_index import calculate_happiness_index
 import torch, re, random
 from contextshift import detect_context_shift
-from  responsesranker import rank_responses
+from responsesranker import rank_responses
 
 try:
     gg = sys.argv[1]
