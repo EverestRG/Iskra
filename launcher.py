@@ -14,7 +14,6 @@ def start_server():
                             stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE,
                             text=True,
-                            shell=True,
                             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
 
 print('Starting server...')
@@ -29,11 +28,13 @@ print('Listener started!')
 
 while True:
     if process.poll() is not None:  # Если процесс завершился
-        print("Listener down. Restarting...")
+        print("Listener down. Restarting in 5 seconds...")
 
         stdout, stderr = process.communicate()
         print("Listener output:", stdout)
         print("Listener error:", stderr)
+
+        time.sleep(5)
 
         # Перезапускаем процесс
         process = run_command()
