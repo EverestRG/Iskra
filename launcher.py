@@ -3,18 +3,13 @@ import os, sys, time, subprocess
 def run_command():
     # Функция запуска команды
     return subprocess.Popen(["cmd", "/c", "lt --port 5000 --subdomain iskra-ai-server"],
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE,
-                            text=True,
                             shell=True,
-                            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
+                            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS)
 
 def start_server():
     return subprocess.Popen([f"{os.path.dirname(sys.argv[0])}\\server.exe", "1"],
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE,
-                            text=True,
-                            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
+                            shell=True,
+                            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS)
 
 print('Starting server...')
 serverprocess = start_server()
@@ -29,10 +24,6 @@ print('Listener started!')
 while True:
     if process.poll() is not None:  # Если процесс завершился
         print("Listener down. Restarting in 5 seconds...")
-
-        stdout, stderr = process.communicate()
-        print("Listener output:", stdout)
-        print("Listener error:", stderr)
 
         time.sleep(5)
 
